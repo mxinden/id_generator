@@ -1,22 +1,38 @@
-pub struct Generator<T: std::ops::Add> {
-    last_returned: T,
-    increment: T,
+pub mod time;
+
+pub type ID = u64;
+pub type MachineID = u16;
+pub type SeqNumber = u16;
+
+pub trait Generator {
+    fn generate(&mut self) -> ID;
 }
 
-impl <T: std::ops::Add> Generator <T> {
-    pub fn new<U>(v: U, i: U) -> Generator<U>
-    where U: std::ops::Add<Output=U> + Copy + Clone {
-        return Generator{last_returned: v, increment: i}
-    }
+pub struct BasicGenerator {
+    clock: time::Clock,
+    machine_id: MachineID,
+    seq_number: SeqNumber,
+}
 
-    pub fn generate(&mut self) -> T
-    where T: std::ops::Add<Output=T> + Copy + Clone 
-    {
-        self.last_returned = self.last_returned + self.increment;
-        return self.last_returned
+impl BasicGenerator {
+    pub fn new(machine_id: MachineID, clock: time::Clock) -> BasicGenerator {
+        let seq_number = 0;
+        return BasicGenerator {
+            clock,
+            seq_number,
+            machine_id,
+        };
     }
 }
 
+impl Generator for BasicGenerator {
+    fn generate(&mut self) -> ID {
+        self.seq_number = self.seq_number + 1;
+        return ((self.clock.now() as u64) << 32)
+            + ((self.machine_id as u64) << 16)
+            + (self.seq_number as u64);
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -24,13 +40,13 @@ mod tests {
 
     #[test]
     fn it_returns_something() {
-        let mut g = Generator::<i32>::new(0, 1);
+        let mut g = BasicGenerator::new(0, time::Clock::new());
         g.generate();
     }
 
     #[test]
     fn it_returns_increasing_values() {
-        let mut g = Generator::<i32>::new(0,1);
+        let mut g = BasicGenerator::new(0, time::Clock::new());
 
         let (first, second) = (g.generate(), g.generate());
 

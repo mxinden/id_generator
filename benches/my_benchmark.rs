@@ -3,19 +3,12 @@ extern crate criterion;
 extern crate id_generator;
 
 use criterion::{Criterion, ParameterizedBenchmark};
+use id_generator::Generator;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut g32 = id_generator::Generator::<i32>::new(0,1);
-    let mut g64 = id_generator::Generator::<i64>::new(0,1);
-    let mut g128 = id_generator::Generator::<i128>::new(0,1);
+    let mut g= id_generator::BasicGenerator::new(0,id_generator::time::Clock::new());
 
-    c.bench("generate",
-            ParameterizedBenchmark::new(
-                "i32", move|b, i| b.iter( || g32.generate()), vec![0] ).with_function(
-                "i64", move|b, i| b.iter( ||g64.generate())).with_function(
-                "i128", move|b, i| b.iter( ||g128.generate())
-            )
-    );
+    c.bench_function("generate", move |b| b.iter(|| g.generate()));
 }
 
 criterion_group!(benches, criterion_benchmark);
