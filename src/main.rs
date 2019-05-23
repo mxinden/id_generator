@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate queues;
 
 use queues::*;
@@ -27,6 +26,7 @@ struct Envelope {
     time: Timestamp,
 }
 
+#[derive(Clone, Debug)]
 struct Server {
     addr: Addr,
     highest_id_seen: ID,
@@ -59,6 +59,7 @@ impl Receiver for Server {
     }
 }
 
+#[derive(Clone, Debug)]
 struct Client {
     addr: Addr,
     claimed_ids: Vec<ID>,
@@ -133,6 +134,33 @@ impl Simulator {
             },
         }
     }
+
+    fn validate_run(&self) -> Result<bool, String> {
+        let clients: Vec<&Client> = self.clients.iter().map(|(k, v)| v).collect();
+
+        // Make sure no two clients claim the same ID.
+        for i in 0..clients.len() {
+            let a = clients[i];
+
+            for j in (i + 1)..self.clients.len() {
+                let b = clients[j];
+
+                for a_id in a.claimed_ids.iter() {
+                    for b_id in b.claimed_ids.iter() {
+                        if a_id == b_id {
+                            return Err(format!(
+                                "both client {} {} and {} {} claimed id {}",
+                                i, a.addr, j, b.addr, a_id
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO: Make sure all clients claimed the amount of IDs they planned to.
+        return Ok(true);
+    }
 }
 
 fn main() {
@@ -142,6 +170,12 @@ fn main() {
         to: "server1".to_string(),
         msg: Msg::Request(1),
         time: 1,
+    });
+    in_flight.add(Envelope {
+        from: "client2".to_string(),
+        to: "server2".to_string(),
+        msg: Msg::Request(1),
+        time: 2,
     });
 
     let server1 = Server {
@@ -161,9 +195,14 @@ fn main() {
         addr: "client1".to_string(),
         claimed_ids: vec![],
     };
+    let client2 = Client {
+        addr: "client2".to_string(),
+        claimed_ids: vec![],
+    };
 
     let mut clients = HashMap::new();
     clients.insert(client1.addr.clone(), client1);
+    clients.insert(client2.addr.clone(), client2);
 
     let mut servers = HashMap::new();
     servers.insert(server1.addr.clone(), server1);
@@ -185,4 +224,11 @@ fn main() {
     }
 
     println!("done");
+
+    let validation = simulator.validate_run();
+
+    match validation {
+        Ok(_) => {}
+        Err(e) => panic!(e),
+    }
 }
