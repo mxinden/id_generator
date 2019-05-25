@@ -13,6 +13,7 @@ trait Receiver {
 
 #[derive(Clone, Debug)]
 enum Msg {
+    StartRequest,
     Request(ID),
     Yes(ID),
     No(ID),
@@ -41,8 +42,13 @@ impl Server {
 impl Receiver for Server {
     fn receive(&mut self, m: Msg, from: Addr) -> Vec<(Msg, Addr)> {
         match m {
+            Msg::StartRequest => {
+                panic!();
+            }
             Msg::Request(id) => {
+                println!("request for {}", id);
                 if self.highest_id_seen < id {
+                    println!("inside if");
                     self.highest_id_seen = id;
                     return vec![(Msg::Yes(id), from)];
                 }
@@ -64,11 +70,26 @@ impl Receiver for Server {
 struct Client {
     addr: Addr,
     claimed_ids: Vec<ID>,
+    servers: Vec<Addr>,
+}
+
+impl Client {
+    fn getAddr(&self) -> Addr {
+        self.addr.clone()
+    }
 }
 
 impl Receiver for Client {
     fn receive(&mut self, m: Msg, addr: Addr) -> Vec<(Msg, Addr)> {
         match m {
+            Msg::StartRequest => {
+                let replies = self.servers.iter().map(|server| {
+                    // TODO: Don't fix to '1'.
+                    (Msg::Request(1), server.clone())
+                }).collect();
+
+                return replies;
+            }
             Msg::Yes(id) => {
                 // TODO: We need a quorum, not only one YES.
                 self.claimed_ids.push(id);
@@ -84,6 +105,7 @@ struct Simulator {
     in_flight: Queue<Envelope>,
     clients: HashMap<Addr, Client>,
     servers: HashMap<Addr, Server>,
+    goal_per_client: usize,
 }
 
 impl Simulator {
@@ -100,6 +122,26 @@ impl Simulator {
 
     fn process_item(&mut self, e: Envelope) {
         match e.msg {
+            Msg::StartRequest => {
+                match self.clients.get_mut(&e.to) {
+                    Some(client) => {
+                        let replies = client.receive(e.msg, e.from);
+
+                        // TODO: Dedup with code in Request.
+                        for (msg, to) in replies {
+                            // TODO: Handle result.
+                            self.in_flight.add(Envelope {
+                                from: client.getAddr(),
+                                to: to,
+                                msg: msg,
+                                // TODO: Change this timestamp.
+                                time: 2,
+                            });
+                        }
+                    }
+                    None => panic!(),
+                }
+            }
             Msg::Request(id) => match self.servers.get_mut(&e.to) {
                 Some(server) => {
                     let replies: Vec<(Msg, Addr)> = server.receive(e.msg, e.from);
@@ -146,8 +188,8 @@ impl Simulator {
                     for b_id in b.claimed_ids.iter() {
                         if a_id == b_id {
                             return Err(format!(
-                                "both client {} {} and {} {} claimed id {}",
-                                i, a.addr, j, b.addr, a_id
+                                "both client {} and {} claimed id {}",
+                                a.addr, b.addr, a_id
                             ));
                         }
                     }
@@ -155,7 +197,18 @@ impl Simulator {
             }
         }
 
-        // TODO: Make sure all clients claimed the amount of IDs they planned to.
+        // Make sure all clients claimed the amount of IDs they planned to.
+        for c in clients {
+            if c.claimed_ids.len() != self.goal_per_client {
+                return Err(format!(
+                    "expected {} to claim {} ids but got {}",
+                    c.addr,
+                    self.goal_per_client,
+                    c.claimed_ids.len(),
+                ));
+            }
+        }
+
         return Ok(true);
     }
 }
@@ -168,15 +221,15 @@ mod tests {
     fn basic_run() {
         let mut in_flight: Queue<Envelope> = queue![];
         in_flight.add(Envelope {
-            from: "client1".to_string(),
-            to: "server1".to_string(),
-            msg: Msg::Request(1),
+            from: "simulator".to_string(),
+            to: "client1".to_string(),
+            msg: Msg::StartRequest,
             time: 1,
         });
         in_flight.add(Envelope {
-            from: "client2".to_string(),
-            to: "server2".to_string(),
-            msg: Msg::Request(1),
+            from: "simulator".to_string(),
+            to: "client2".to_string(),
+            msg: Msg::StartRequest,
             time: 2,
         });
 
@@ -196,10 +249,20 @@ mod tests {
         let client1 = Client {
             addr: "client1".to_string(),
             claimed_ids: vec![],
+            servers: vec![
+                "server1".to_string(),
+                "server2".to_string(),
+                "server3".to_string(),
+            ],
         };
         let client2 = Client {
             addr: "client2".to_string(),
             claimed_ids: vec![],
+            servers: vec![
+                "server1".to_string(),
+                "server2".to_string(),
+                "server3".to_string(),
+            ],
         };
 
         let mut clients = HashMap::new();
@@ -215,6 +278,7 @@ mod tests {
             in_flight,
             clients,
             servers,
+            goal_per_client: 1,
         };
 
         simulator.run();
