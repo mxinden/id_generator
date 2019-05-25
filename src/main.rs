@@ -43,9 +43,10 @@ impl Receiver for Server {
         match m {
             Msg::Request(id) => {
                 if self.highest_id_seen < id {
-                    // TODO: Make sure we increment our ID here.
+                    self.highest_id_seen = id;
                     return vec![(Msg::Yes(id), from)];
                 }
+                return vec![(Msg::No(id), from)];
             }
             Msg::Yes(_) => {
                 panic!();
@@ -134,7 +135,7 @@ impl Simulator {
     fn validate_run(&self) -> Result<bool, String> {
         let clients: Vec<&Client> = self.clients.iter().map(|(k, v)| v).collect();
 
-        // Make sure no two clients claim the same ID.
+        // Make sure no two clients claimed the same ID.
         for i in 0..clients.len() {
             let a = clients[i];
 
