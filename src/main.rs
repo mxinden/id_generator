@@ -98,14 +98,10 @@ impl Simulator {
     }
 
     fn process_item(&mut self, e: Envelope) {
-        println!("process item");
-
         match e.msg {
             Msg::Request(id) => match self.servers.get_mut(&e.to) {
                 Some(server) => {
                     let replies: Vec<(Msg, Addr)> = server.receive(e.msg, e.from);
-
-                    println!("got {} replies", replies.len());
 
                     for (msg, to) in replies {
                         // TODO: Handle result.
@@ -221,14 +217,6 @@ mod tests {
         };
 
         simulator.run();
-
-        println!("in flight: {:?}", simulator.in_flight);
-
-        for (k, v) in simulator.clients.iter() {
-            println!("claimed ids: {:?}", v.claimed_ids)
-        }
-
-        println!("done");
 
         let validation = simulator.validate_run();
 
