@@ -34,7 +34,7 @@ struct Server {
 }
 
 impl Server {
-    fn getAddr(&self) -> Addr {
+    fn get_addr(&self) -> Addr {
         self.addr.clone()
     }
 }
@@ -46,9 +46,7 @@ impl Receiver for Server {
                 panic!();
             }
             Msg::Request(id) => {
-                println!("request for {}", id);
                 if self.highest_id_seen < id {
-                    println!("inside if");
                     self.highest_id_seen = id;
                     return vec![(Msg::Yes(id), from)];
                 }
@@ -61,43 +59,74 @@ impl Receiver for Server {
                 panic!();
             }
         }
-
-        panic!();
     }
 }
 
 #[derive(Clone, Debug)]
 struct Client {
     addr: Addr,
-    claimed_ids: Vec<ID>,
     servers: Vec<Addr>,
+    // Track all yeses and nos for a given ID.
+    responses: HashMap<ID, (usize, usize)>,
+    highest_id_seen: ID,
+    claimed_ids: Vec<ID>,
 }
 
 impl Client {
-    fn getAddr(&self) -> Addr {
+    fn get_addr(&self) -> Addr {
         self.addr.clone()
     }
 }
 
 impl Receiver for Client {
-    fn receive(&mut self, m: Msg, addr: Addr) -> Vec<(Msg, Addr)> {
+    fn receive(&mut self, m: Msg, _addr: Addr) -> Vec<(Msg, Addr)> {
+        let to_all_servers = |servers: &Vec<Addr>, msg: Msg| -> Vec<(Msg, Addr)> {
+            servers
+                .iter()
+                .map(|server| (msg.clone(), server.clone()))
+                .collect()
+        };
+
+        let get_responses_with_default = |id: ID| -> (usize, usize) {
+            match self.responses.get(&id) {
+                Some((y, n)) => (y.clone(),n.clone()),
+                None => (0,0),
+            }
+        };
+
+
         match m {
             Msg::StartRequest => {
-                let replies = self.servers.iter().map(|server| {
-                    // TODO: Don't fix to '1'.
-                    (Msg::Request(1), server.clone())
-                }).collect();
-
-                return replies;
+                return to_all_servers(&self.servers, Msg::Request(self.highest_id_seen));
             }
             Msg::Yes(id) => {
-                // TODO: We need a quorum, not only one YES.
-                self.claimed_ids.push(id);
+                let (yes, no) = get_responses_with_default(id);
+
+                self.responses.insert(id, (yes + 1, no));
+
+                // '==' not '>=' to prevent double adding.
+                if yes == self.servers.len() / 2 + 1 {
+                    self.claimed_ids.push(id.clone());
+                }
+
+                return vec![];
             }
-            Msg::No(id) => {}
+            Msg::No(id) => {
+                let (yes, no) = get_responses_with_default(id);
+
+                self.responses.insert(id, (yes, no + 1));
+
+                // '==' not '>=' to prevent double retries.
+                if no == self.servers.len() / 2 + 1 {
+                    let next_id = self.highest_id_seen + 1;
+                    self.highest_id_seen = next_id;
+                    return to_all_servers(&self.servers, Msg::Request(next_id));
+                }
+
+                return vec![];
+            }
             Msg::Request(_) => panic!(),
         }
-        Vec::new()
     }
 }
 
@@ -121,61 +150,41 @@ impl Simulator {
     }
 
     fn process_item(&mut self, e: Envelope) {
-        match e.msg {
-            Msg::StartRequest => {
-                match self.clients.get_mut(&e.to) {
-                    Some(client) => {
-                        let replies = client.receive(e.msg, e.from);
+        println!("{:?}", e);
 
-                        // TODO: Dedup with code in Request.
-                        for (msg, to) in replies {
-                            // TODO: Handle result.
-                            self.in_flight.add(Envelope {
-                                from: client.getAddr(),
-                                to: to,
-                                msg: msg,
-                                // TODO: Change this timestamp.
-                                time: 2,
-                            });
-                        }
-                    }
-                    None => panic!(),
-                }
-            }
-            Msg::Request(id) => match self.servers.get_mut(&e.to) {
-                Some(server) => {
-                    let replies: Vec<(Msg, Addr)> = server.receive(e.msg, e.from);
-
-                    for (msg, to) in replies {
-                        // TODO: Handle result.
-                        self.in_flight.add(Envelope {
-                            from: server.getAddr(),
-                            to: to,
-                            msg: msg,
-                            // TODO: Change this timestamp.
-                            time: 2,
-                        });
-                    }
-                }
+        let (from, replies) = match e.msg {
+            Msg::StartRequest => match self.clients.get_mut(&e.to) {
+                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
+                None => panic!(),
+            },
+            Msg::Request(_) => match self.servers.get_mut(&e.to) {
+                Some(server) => (server.get_addr().clone(), server.receive(e.msg, e.from)),
                 None => panic!(),
             },
             Msg::Yes(_) => match self.clients.get_mut(&e.to) {
-                Some(client) => {
-                    client.receive(e.msg, e.from);
-                }
+                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
                 None => panic!(),
             },
-            Msg::No(id) => match self.clients.get_mut(&e.to) {
-                Some(client) => {
-                    client.receive(e.msg, e.from);
-                }
+            Msg::No(_) => match self.clients.get_mut(&e.to) {
+                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
                 None => panic!(),
             },
+        };
+
+        for (msg, to) in replies {
+            // TODO: Handle result.
+            self.in_flight.add(Envelope {
+                from: from.clone(),
+                to: to,
+                msg: msg,
+                // TODO: Change this timestamp.
+                time: 2,
+            });
         }
     }
 
     fn validate_run(&self) -> Result<bool, String> {
-        let clients: Vec<&Client> = self.clients.iter().map(|(k, v)| v).collect();
+        let clients: Vec<&Client> = self.clients.iter().map(|(_, v)| v).collect();
 
         // Make sure no two clients claimed the same ID.
         for i in 0..clients.len() {
@@ -254,6 +263,8 @@ mod tests {
                 "server2".to_string(),
                 "server3".to_string(),
             ],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
         };
         let client2 = Client {
             addr: "client2".to_string(),
@@ -263,6 +274,8 @@ mod tests {
                 "server2".to_string(),
                 "server3".to_string(),
             ],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
         };
 
         let mut clients = HashMap::new();
