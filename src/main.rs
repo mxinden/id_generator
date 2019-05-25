@@ -163,72 +163,78 @@ impl Simulator {
     }
 }
 
-fn main() {
-    let mut in_flight: Queue<Envelope> = queue![];
-    in_flight.add(Envelope {
-        from: "client1".to_string(),
-        to: "server1".to_string(),
-        msg: Msg::Request(1),
-        time: 1,
-    });
-    in_flight.add(Envelope {
-        from: "client2".to_string(),
-        to: "server2".to_string(),
-        msg: Msg::Request(1),
-        time: 2,
-    });
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let server1 = Server {
-        addr: "server1".to_string(),
-        highest_id_seen: 0,
-    };
-    let server2 = Server {
-        addr: "server2".to_string(),
-        highest_id_seen: 0,
-    };
-    let server3 = Server {
-        addr: "server3".to_string(),
-        highest_id_seen: 0,
-    };
+    #[test]
+    fn basic_run() {
+        let mut in_flight: Queue<Envelope> = queue![];
+        in_flight.add(Envelope {
+            from: "client1".to_string(),
+            to: "server1".to_string(),
+            msg: Msg::Request(1),
+            time: 1,
+        });
+        in_flight.add(Envelope {
+            from: "client2".to_string(),
+            to: "server2".to_string(),
+            msg: Msg::Request(1),
+            time: 2,
+        });
 
-    let client1 = Client {
-        addr: "client1".to_string(),
-        claimed_ids: vec![],
-    };
-    let client2 = Client {
-        addr: "client2".to_string(),
-        claimed_ids: vec![],
-    };
+        let server1 = Server {
+            addr: "server1".to_string(),
+            highest_id_seen: 0,
+        };
+        let server2 = Server {
+            addr: "server2".to_string(),
+            highest_id_seen: 0,
+        };
+        let server3 = Server {
+            addr: "server3".to_string(),
+            highest_id_seen: 0,
+        };
 
-    let mut clients = HashMap::new();
-    clients.insert(client1.addr.clone(), client1);
-    clients.insert(client2.addr.clone(), client2);
+        let client1 = Client {
+            addr: "client1".to_string(),
+            claimed_ids: vec![],
+        };
+        let client2 = Client {
+            addr: "client2".to_string(),
+            claimed_ids: vec![],
+        };
 
-    let mut servers = HashMap::new();
-    servers.insert(server1.addr.clone(), server1);
-    servers.insert(server2.addr.clone(), server2);
-    servers.insert(server3.addr.clone(), server3);
+        let mut clients = HashMap::new();
+        clients.insert(client1.addr.clone(), client1);
+        clients.insert(client2.addr.clone(), client2);
 
-    let mut simulator = Simulator {
-        in_flight,
-        clients,
-        servers,
-    };
+        let mut servers = HashMap::new();
+        servers.insert(server1.addr.clone(), server1);
+        servers.insert(server2.addr.clone(), server2);
+        servers.insert(server3.addr.clone(), server3);
 
-    simulator.run();
+        let mut simulator = Simulator {
+            in_flight,
+            clients,
+            servers,
+        };
 
-    println!("in flight: {:?}", simulator.in_flight);
+        simulator.run();
 
-    for (k, v) in simulator.clients.iter() {
-        println!("claimed ids: {:?}", v.claimed_ids)
-    }
+        println!("in flight: {:?}", simulator.in_flight);
 
-    println!("done");
+        for (k, v) in simulator.clients.iter() {
+            println!("claimed ids: {:?}", v.claimed_ids)
+        }
 
-    let validation = simulator.validate_run();
+        println!("done");
 
-    match validation {
-        Ok(_) => {}
-        Err(e) => panic!(e),
+        let validation = simulator.validate_run();
+
+        match validation {
+            Ok(_) => {}
+            Err(e) => panic!(e),
+        }
     }
 }
