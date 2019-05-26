@@ -89,11 +89,10 @@ impl Receiver for Client {
 
         let get_responses_with_default = |id: ID| -> (usize, usize) {
             match self.responses.get(&id) {
-                Some((y, n)) => (y.clone(),n.clone()),
-                None => (0,0),
+                Some((y, n)) => (y.clone(), n.clone()),
+                None => (0, 0),
             }
         };
-
 
         match m {
             Msg::StartRequest => {
@@ -139,14 +138,12 @@ struct Simulator {
 
 impl Simulator {
     fn run(&mut self) -> String {
-        while true {
+        loop {
             match self.in_flight.remove() {
                 Err(e) => return e.into(),
                 Ok(e) => self.process_item(e),
             }
         }
-
-        "".to_string()
     }
 
     fn process_item(&mut self, e: Envelope) {
@@ -172,14 +169,16 @@ impl Simulator {
         };
 
         for (msg, to) in replies {
-            // TODO: Handle result.
-            self.in_flight.add(Envelope {
+            match self.in_flight.add(Envelope {
                 from: from.clone(),
                 to: to,
                 msg: msg,
                 // TODO: Change this timestamp.
                 time: 2,
-            });
+            }) {
+                Ok(_) => {}
+                Err(e) => panic!(e.to_string()),
+            }
         }
     }
 
@@ -229,63 +228,38 @@ mod tests {
     #[test]
     fn basic_run() {
         let mut in_flight: Queue<Envelope> = queue![];
-        in_flight.add(Envelope {
-            from: "simulator".to_string(),
-            to: "client1".to_string(),
-            msg: Msg::StartRequest,
-            time: 1,
-        });
-        in_flight.add(Envelope {
-            from: "simulator".to_string(),
-            to: "client2".to_string(),
-            msg: Msg::StartRequest,
-            time: 2,
-        });
-
-        let server1 = Server {
-            addr: "server1".to_string(),
-            highest_id_seen: 0,
-        };
-        let server2 = Server {
-            addr: "server2".to_string(),
-            highest_id_seen: 0,
-        };
-        let server3 = Server {
-            addr: "server3".to_string(),
-            highest_id_seen: 0,
-        };
-
-        let client1 = Client {
-            addr: "client1".to_string(),
-            claimed_ids: vec![],
-            servers: vec![
-                "server1".to_string(),
-                "server2".to_string(),
-                "server3".to_string(),
-            ],
-            highest_id_seen: 0,
-            responses: HashMap::new(),
-        };
-        let client2 = Client {
-            addr: "client2".to_string(),
-            claimed_ids: vec![],
-            servers: vec![
-                "server1".to_string(),
-                "server2".to_string(),
-                "server3".to_string(),
-            ],
-            highest_id_seen: 0,
-            responses: HashMap::new(),
-        };
-
         let mut clients = HashMap::new();
-        clients.insert(client1.addr.clone(), client1);
-        clients.insert(client2.addr.clone(), client2);
-
         let mut servers = HashMap::new();
-        servers.insert(server1.addr.clone(), server1);
-        servers.insert(server2.addr.clone(), server2);
-        servers.insert(server3.addr.clone(), server3);
+
+        let client_addresses = vec!["client1".to_string(), "client2".to_string()];
+        let server_addresses = vec!["server1".to_string(), "server2".to_string(), "server3".to_string()];
+
+        for addr in client_addresses {
+            clients.insert(addr.clone(), Client {
+                addr: addr.clone(),
+                claimed_ids: vec![],
+                servers: server_addresses.clone(),
+                highest_id_seen: 0,
+                responses: HashMap::new(),
+            });
+
+            match in_flight.add(Envelope {
+                from: "simulator".to_string(),
+                to: addr,
+                msg: Msg::StartRequest,
+                time: 1,
+            }) {
+                Ok(_) => {},
+                Err(e) => panic!(e.to_string()),
+            };
+        }
+
+        for addr in server_addresses {
+            servers.insert(addr, Server {
+                addr: "server1".to_string(),
+                highest_id_seen: 0,
+            });
+        }
 
         let mut simulator = Simulator {
             in_flight,
