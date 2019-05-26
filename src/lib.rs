@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 pub type ID = u64;
 pub type Addr = String;
-pub type Timestamp = u64;
+pub type Timestamp = usize;
 
 pub trait Receiver {
     fn receive(&mut self, m: Msg, addr: Addr) -> Vec<(Msg, Addr)>;
@@ -101,7 +101,7 @@ impl Receiver for Client {
                 self.responses.insert(id, (yes + 1, no));
 
                 // '==' not '>=' to prevent double adding.
-                if yes == self.servers.len() / 2 + 1 {
+                if yes == self.servers.len() / 2 {
                     self.claimed_ids.push(id.clone());
                 }
 
@@ -113,7 +113,8 @@ impl Receiver for Client {
                 self.responses.insert(id, (yes, no + 1));
 
                 // '==' not '>=' to prevent double retries.
-                if no == self.servers.len() / 2 + 1 {
+                println!("no: {} {} {}", no, self.servers.len(), self.servers.len() /2 );
+                if no == self.servers.len() / 2  {
                     let next_id = self.highest_id_seen + 1;
                     self.highest_id_seen = next_id;
                     return to_all_servers(&self.servers, Msg::Request(next_id));
