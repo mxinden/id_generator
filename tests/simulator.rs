@@ -93,8 +93,6 @@ impl Simulator {
     }
 
     fn process_item(&mut self, e: Envelope) {
-        println!("{:?}", e);
-
         let (from, replies) = match e.msg {
             Msg::StartRequest => match self.clients.get_mut(&e.to) {
                 Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),

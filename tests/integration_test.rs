@@ -70,22 +70,21 @@ mod tests {
             return TestResult::discard()
         }
 
-        println!("x: {}, y: {}, z: {}, d: {}", x, y, z, d);
         let mut simulator = simulator::Simulator::new(x, y, z, d);
 
-        simulator.run().map_err(|e| {
-            println!("failed with: {}", e);
-            return TestResult::failed();
-        });
+        match simulator.run() {
+            Ok(_) => {},
+            Err(e) => return TestResult::error(e),
+        };
+
 
         let validation = simulator.validate_run();
 
-        TestResult::from_bool(match validation {
-            Ok(_) => true,
+        match validation {
+            Ok(_) => TestResult::passed(),
             Err(e) => {
-                println!("error: {}", e);
-                false
+                TestResult::error(e)
             },
-        })
+        }
     }
 }
