@@ -93,6 +93,7 @@ impl Receiver for Client {
 
         match m {
             Msg::StartRequest => {
+                self.highest_id_seen = self.highest_id_seen + 1;
                 return to_all_servers(&self.servers, Msg::Request(self.highest_id_seen));
             }
             Msg::Yes(id) => {

@@ -1,20 +1,21 @@
 extern crate id_generator;
 extern crate queues;
 
-use id_generator::{Msg, Envelope, Client, Server, Addr, Receiver, Timestamp};
-use std::collections::HashMap;
+use id_generator::{Addr, Client, Envelope, Msg, Receiver, Server, Timestamp};
 use queues::*;
+use std::collections::HashMap;
 
 pub struct Simulator {
     pub in_flight: Queue<Envelope>,
     pub clients: HashMap<Addr, Client>,
     pub servers: HashMap<Addr, Server>,
     pub goal_per_client: usize,
+    pub msg_delay: usize,
     time: Timestamp,
 }
 
 impl Simulator {
-    pub fn new(num_clients: usize, num_servers: usize, num_ids_per_client: usize) -> Simulator {
+    pub fn new(num_clients: usize, num_servers: usize, num_ids_per_client: usize, msg_delay: usize) -> Simulator {
         let in_flight: Queue<Envelope> = queue![];
         let mut clients = HashMap::new();
         let mut servers = HashMap::new();
@@ -22,37 +23,43 @@ impl Simulator {
         let mut client_addresses = vec![];
         let mut server_addresses = vec![];
 
-        for i in 1..num_clients+1 {
-            client_addresses.push(format!("client-{}",i))
+        for i in 1..num_clients + 1 {
+            client_addresses.push(format!("client-{}", i))
         }
 
-        for i in 1..num_servers+1{
-            server_addresses.push(format!("server-{}",i))
+        for i in 1..num_servers + 1 {
+            server_addresses.push(format!("server-{}", i))
         }
-
 
         for addr in client_addresses.clone() {
-            clients.insert(addr.clone(), Client {
-                addr: addr.clone(),
-                claimed_ids: vec![],
-                servers: server_addresses.clone(),
-                highest_id_seen: 0,
-                responses: HashMap::new(),
-            });
-        };
+            clients.insert(
+                addr.clone(),
+                Client {
+                    addr: addr.clone(),
+                    claimed_ids: vec![],
+                    servers: server_addresses.clone(),
+                    highest_id_seen: 0,
+                    responses: HashMap::new(),
+                },
+            );
+        }
 
         for addr in server_addresses {
-            servers.insert(addr.clone(), Server {
-                addr: addr.clone(),
-                highest_id_seen: 0,
-            });
-        };
+            servers.insert(
+                addr.clone(),
+                Server {
+                    addr: addr.clone(),
+                    highest_id_seen: 0,
+                },
+            );
+        }
 
         let mut sim = Simulator {
             in_flight,
             clients,
             servers,
             goal_per_client: num_ids_per_client,
+            msg_delay,
             time: 0,
         };
 
@@ -73,12 +80,15 @@ impl Simulator {
         return sim;
     }
 
-    pub fn run(&mut self) -> String {
+    pub fn run(&mut self) -> Result<(), String>{
         loop {
-            match self.in_flight.remove() {
-                Err(e) => return e.into(),
-                Ok(e) => self.process_item(e),
+            if (self.goal_per_client * 1000) < self.time {
+                return Err("too many iterations".to_string());
             }
+
+            let elem = self.in_flight.remove()?;
+
+            self.process_item(elem);
         }
     }
 
@@ -113,7 +123,7 @@ impl Simulator {
                 to: to,
                 msg: msg,
                 // TODO: Make the offset to timestamp random.
-                time: self.time + 10,
+                time: self.time + self.msg_delay,
             }) {
                 Ok(_) => {}
                 Err(e) => panic!(e.to_string()),
@@ -154,9 +164,9 @@ impl Simulator {
                     c.claimed_ids.len(),
                 ));
             }
-        };
+        }
 
-        return Ok(true)
+        return Ok(true);
     }
 }
 
@@ -166,10 +176,10 @@ mod tests {
 
     #[test]
     fn simulator_increases_timestamp() {
-        let mut sim = Simulator::new(2, 3, 1);
+        let mut sim = Simulator::new(2, 3, 1, 2);
 
         sim.run();
 
-        assert_eq!(sim.time, 32);
+        assert_eq!(sim.time, 20);
     }
 }
