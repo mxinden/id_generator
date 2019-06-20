@@ -114,7 +114,6 @@ impl Receiver for Client {
                 self.responses.insert(id, (yes, no + 1));
 
                 // '==' not '>=' to prevent double retries.
-                println!("no: {} {} {}", no, self.servers.len(), self.servers.len() /2 );
                 if no == self.servers.len() / 2  {
                     let next_id = self.highest_id_seen + 1;
                     self.highest_id_seen = next_id;

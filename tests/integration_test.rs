@@ -7,7 +7,7 @@ extern crate quickcheck;
 #[macro_use(quickcheck)]
 extern crate quickcheck_macros;
 
-use quickcheck::{TestResult, quickcheck};
+use quickcheck::{quickcheck, TestResult};
 
 mod simulator;
 
@@ -18,9 +18,12 @@ mod tests {
 
     #[test]
     fn basic_run() {
-        let mut simulator = simulator::Simulator::new(2,2,2, 2);
+        let mut simulator = simulator::Simulator::new(2, 2, 2, 2);
 
-        simulator.run();
+        match simulator.run() {
+            Ok(_) => {}
+            Err(e) => panic!(e),
+        };
 
         let validation = simulator.validate_run();
 
@@ -34,7 +37,10 @@ mod tests {
     fn one_client_two_servers() {
         let mut simulator = simulator::Simulator::new(1, 2, 1, 2);
 
-        simulator.run();
+        match simulator.run() {
+            Ok(_) => {}
+            Err(e) => panic!(e),
+        };
 
         let validation = simulator.validate_run();
 
@@ -45,46 +51,69 @@ mod tests {
     }
 
     #[test]
-    fn random() {
-        let mut rng = rand::thread_rng();
+    fn previous_failures() {
+        struct Test {
+            num_clients: usize,
+            num_servers: usize,
+            num_ids: usize,
+            delay: usize,
+        };
 
-        let simulator = simulator::Simulator::new(
-            rng.gen_range(0, 10),
-            rng.gen_range(0, 10),
-            rng.gen_range(0, 10),
-            rng.gen_range(0, 10),
-        );
+        let tests = vec![
+            // This did exceed the artificial maximum time limit inside the
+            // simulator.
+            Test {
+                num_clients: 4,
+                num_servers: 50,
+                num_ids: 1,
+                delay: 1,
+            },
+        ];
 
-        let validation = simulator.validate_run();
+        for test in tests {
+            let mut simulator = simulator::Simulator::new(
+                test.num_clients,
+                test.num_servers,
+                test.num_ids,
+                test.delay,
+            );
 
-        match validation {
-            Ok(_) => {}
-            Err(e) => panic!(e),
+            match simulator.run() {
+                Ok(_) => {}
+                Err(e) => panic!(e),
+            };
+
+            let validation = simulator.validate_run();
+
+            match validation {
+                Ok(_) => {}
+                Err(e) => panic!(e),
+            }
         }
     }
 
     #[quickcheck]
-    fn prop(x: usize, y: usize, z: usize, d: usize) -> TestResult{
-        if y < 1 || z < 1 || d < 1 {
-            println!("discarding y: {}, z: {}, d: {}", y, z, d);
-            return TestResult::discard()
+    fn prop(clients: usize, servers: usize, ids: usize, delay: usize) -> TestResult {
+        if clients < 1 || servers < 1 || ids < 1 || delay < 1 {
+            return TestResult::discard();
         }
 
-        let mut simulator = simulator::Simulator::new(x, y, z, d);
+        if clients > 100 || servers > 100 || ids > 1000 || delay > 1000 {
+            return TestResult::discard();
+        }
+
+        let mut simulator = simulator::Simulator::new(clients, servers, ids, delay);
 
         match simulator.run() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return TestResult::error(e),
         };
-
 
         let validation = simulator.validate_run();
 
         match validation {
             Ok(_) => TestResult::passed(),
-            Err(e) => {
-                TestResult::error(e)
-            },
+            Err(e) => TestResult::error(e),
         }
     }
 }

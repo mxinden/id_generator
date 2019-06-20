@@ -15,7 +15,12 @@ pub struct Simulator {
 }
 
 impl Simulator {
-    pub fn new(num_clients: usize, num_servers: usize, num_ids_per_client: usize, msg_delay: usize) -> Simulator {
+    pub fn new(
+        num_clients: usize,
+        num_servers: usize,
+        num_ids_per_client: usize,
+        msg_delay: usize,
+    ) -> Simulator {
         let in_flight: Queue<Envelope> = queue![];
         let mut clients = HashMap::new();
         let mut servers = HashMap::new();
@@ -80,16 +85,22 @@ impl Simulator {
         return sim;
     }
 
-    pub fn run(&mut self) -> Result<(), String>{
+    pub fn run(&mut self) -> Result<(), String> {
         loop {
-            if (self.goal_per_client * 1000) < self.time {
+            if (self.goal_per_client * self.servers.len() * self.clients.len() * 10) < self.time {
                 return Err("too many iterations".to_string());
+            }
+
+            if self.in_flight.size() == 0 {
+                break;
             }
 
             let elem = self.in_flight.remove()?;
 
             self.process_item(elem);
         }
+
+        Ok(())
     }
 
     fn process_item(&mut self, e: Envelope) {
@@ -176,7 +187,10 @@ mod tests {
     fn simulator_increases_timestamp() {
         let mut sim = Simulator::new(2, 3, 1, 2);
 
-        sim.run();
+        match sim.run() {
+            Ok(_) => {}
+            Err(e) => panic!(e),
+        };
 
         assert_eq!(sim.time, 20);
     }
