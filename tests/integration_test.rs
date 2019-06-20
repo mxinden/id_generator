@@ -14,7 +14,6 @@ mod simulator;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::Rng;
 
     #[test]
     fn basic_run() {
@@ -56,7 +55,7 @@ mod tests {
             num_clients: usize,
             num_servers: usize,
             num_ids: usize,
-            delay: usize,
+            delay: u64,
         };
 
         let tests = vec![
@@ -93,7 +92,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn prop(clients: usize, servers: usize, ids: usize, delay: usize) -> TestResult {
+    fn prop(clients: usize, servers: usize, ids: usize, delay:u64) -> TestResult {
         if clients < 1 || servers < 1 || ids < 1 || delay < 1 {
             return TestResult::discard();
         }

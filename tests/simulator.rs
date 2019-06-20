@@ -2,15 +2,15 @@ extern crate id_generator;
 extern crate queues;
 
 use id_generator::{Addr, Client, Envelope, Msg, Receiver, Server, Timestamp};
-use queues::*;
+use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
 
 pub struct Simulator {
-    pub in_flight: Queue<Envelope>,
+    pub in_flight: Vec<Envelope>,
     pub clients: HashMap<Addr, Client>,
     pub servers: HashMap<Addr, Server>,
     pub goal_per_client: usize,
-    pub msg_delay: usize,
+    rng: rand::rngs::StdRng,
     time: Timestamp,
 }
 
@@ -19,9 +19,9 @@ impl Simulator {
         num_clients: usize,
         num_servers: usize,
         num_ids_per_client: usize,
-        msg_delay: usize,
+        network_seed: u64,
     ) -> Simulator {
-        let in_flight: Queue<Envelope> = queue![];
+        let in_flight: Vec<Envelope> = vec![];
         let mut clients = HashMap::new();
         let mut servers = HashMap::new();
 
@@ -59,48 +59,56 @@ impl Simulator {
             );
         }
 
+        let rng: rand::rngs::StdRng = SeedableRng::seed_from_u64(network_seed);
+
         let mut sim = Simulator {
             in_flight,
             clients,
             servers,
             goal_per_client: num_ids_per_client,
-            msg_delay,
+            rng,
             time: 0,
         };
 
         for _ in 0..num_ids_per_client {
             for addr in client_addresses.clone() {
-                match sim.in_flight.add(Envelope {
+                sim.in_flight.push(Envelope {
                     from: "simulator".to_string(),
                     to: addr,
                     msg: Msg::StartRequest,
-                    time: 1,
-                }) {
-                    Ok(_) => {}
-                    Err(e) => panic!(e.to_string()),
-                };
+                    time: 1 + sim.rng.gen_range(1, 10),
+                });
             }
         }
+
+        sim.sort_in_flight();
 
         return sim;
     }
 
     pub fn run(&mut self) -> Result<(), String> {
         loop {
-            if (self.goal_per_client * self.servers.len() * self.clients.len() * 10) < self.time {
+            if (self.goal_per_client * self.servers.len() * self.clients.len() * 100) < self.time {
                 return Err("too many iterations".to_string());
             }
 
-            if self.in_flight.size() == 0 {
+            if self.in_flight.len() == 0 {
                 break;
             }
 
-            let elem = self.in_flight.remove()?;
+            self.sort_in_flight();
+
+            let elem = self.in_flight.remove(0);
 
             self.process_item(elem);
         }
 
         Ok(())
+    }
+
+    fn sort_in_flight(&mut self) {
+        self.in_flight
+            .sort_by(|a: &Envelope, b: &Envelope| a.time.cmp(&b.time));
     }
 
     fn process_item(&mut self, e: Envelope) {
@@ -124,19 +132,15 @@ impl Simulator {
         };
 
         // We did work, thus moving the clock forward.
-        self.time = self.time + 1;
+        self.time = e.time + 1;
 
         for (msg, to) in replies {
-            match self.in_flight.add(Envelope {
+            self.in_flight.push(Envelope {
                 from: from.clone(),
                 to: to,
                 msg: msg,
-                // TODO: Make the offset to timestamp random.
-                time: self.time + self.msg_delay,
-            }) {
-                Ok(_) => {}
-                Err(e) => panic!(e.to_string()),
-            }
+                time: self.time + self.rng.gen_range(1, 10),
+            });
         }
     }
 
@@ -192,6 +196,6 @@ mod tests {
             Err(e) => panic!(e),
         };
 
-        assert_eq!(sim.time, 20);
+        assert_eq!(sim.time, 38);
     }
 }
