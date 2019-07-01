@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub type ID = u64;
+pub type Id = u64;
 pub type Addr = String;
 pub type Timestamp = usize;
 
@@ -11,9 +11,9 @@ pub trait Receiver {
 #[derive(Clone, Debug)]
 pub enum Msg {
     StartRequest,
-    Request(ID),
-    Yes(ID),
-    No(ID),
+    Request(Id),
+    Yes(Id),
+    No(Id),
 }
 
 #[derive(Clone, Debug)]
@@ -27,7 +27,7 @@ pub struct Envelope {
 #[derive(Clone, Debug)]
 pub struct Server {
     pub addr: Addr,
-    pub highest_id_seen: ID,
+    pub highest_id_seen: Id,
 }
 
 impl Server {
@@ -63,10 +63,10 @@ impl Receiver for Server {
 pub struct Client {
     pub addr: Addr,
     pub servers: Vec<Addr>,
-    // Track all yeses and nos for a given ID.
-    pub responses: HashMap<ID, (usize, usize)>,
-    pub highest_id_seen: ID,
-    pub claimed_ids: Vec<ID>,
+    // Track all yeses and nos for a given Id.
+    pub responses: HashMap<Id, (usize, usize)>,
+    pub highest_id_seen: Id,
+    pub claimed_ids: Vec<Id>,
 }
 
 impl Client {
@@ -84,7 +84,7 @@ impl Receiver for Client {
                 .collect()
         };
 
-        let get_responses_with_default = |id: ID| -> (usize, usize) {
+        let get_responses_with_default = |id: Id| -> (usize, usize) {
             match self.responses.get(&id) {
                 Some((y, n)) => (y.clone(), n.clone()),
                 None => (0, 0),
@@ -114,7 +114,7 @@ impl Receiver for Client {
                 self.responses.insert(id, (yes, no + 1));
 
                 // '==' not '>=' to prevent double retries.
-                if no == self.servers.len() / 2  {
+                if no == self.servers.len() / 2 {
                     let next_id = self.highest_id_seen + 1;
                     self.highest_id_seen = next_id;
                     return to_all_servers(&self.servers, Msg::Request(next_id));
@@ -126,5 +126,3 @@ impl Receiver for Client {
         }
     }
 }
-
-

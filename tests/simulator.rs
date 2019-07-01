@@ -147,7 +147,7 @@ impl Simulator {
     pub fn validate_run(&self) -> Result<bool, String> {
         let clients: Vec<&Client> = self.clients.iter().map(|(_, v)| v).collect();
 
-        // Make sure no two clients claimed the same ID.
+        // Make sure no two clients claimed the same Id.
         for i in 0..clients.len() {
             let a = clients[i];
 
@@ -167,7 +167,7 @@ impl Simulator {
             }
         }
 
-        // Make sure all clients claimed the amount of IDs they planned to.
+        // Make sure all clients claimed the amount of Ids they planned to.
         for c in clients {
             if c.claimed_ids.len() != self.goal_per_client {
                 return Err(format!(
