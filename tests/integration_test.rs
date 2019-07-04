@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn prop(clients: usize, servers: usize, ids: usize, delay:u64) -> TestResult {
+    fn prop(clients: usize, servers: usize, ids: usize, delay: u64) -> TestResult {
         if clients < 1 || servers < 1 || ids < 1 || delay < 1 {
             return TestResult::discard();
         }

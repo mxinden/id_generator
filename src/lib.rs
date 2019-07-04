@@ -5,7 +5,7 @@ pub type Addr = String;
 pub type Timestamp = usize;
 
 pub trait Receiver {
-    fn receive(&mut self, m: Msg, addr: Addr) -> Vec<(Msg, Addr)>;
+    fn receive(&mut self, _: Msg, _: Addr) -> Vec<(Msg, Addr)>;
 }
 
 #[derive(Clone, Debug)]
@@ -14,6 +14,69 @@ pub enum Msg {
     Request(Id),
     Yes(Id),
     No(Id),
+}
+
+impl PartialEq for Msg {
+    fn eq(&self, other: &Msg) -> bool {
+        match self {
+            Msg::StartRequest => match other {
+                Msg::StartRequest => {
+                    return true;
+                }
+                Msg::Request(_) => {
+                    return false;
+                }
+                Msg::Yes(_) => {
+                    return false;
+                }
+                Msg::No(_) => {
+                    return false;
+                }
+            },
+            Msg::Request(id) => match other {
+                Msg::StartRequest => {
+                    return false;
+                }
+                Msg::Request(other_id) => {
+                    return id == other_id;
+                }
+                Msg::Yes(_) => {
+                    return false;
+                }
+                Msg::No(_) => {
+                    return false;
+                }
+            },
+            Msg::Yes(yes) => match other {
+                Msg::StartRequest => {
+                    return false;
+                }
+                Msg::Request(_) => {
+                    return false;
+                }
+                Msg::Yes(other_yes) => {
+                    return yes == other_yes;
+                }
+                Msg::No(_) => {
+                    return false;
+                }
+            },
+            Msg::No(no) => match other {
+                Msg::StartRequest => {
+                    return false;
+                }
+                Msg::Request(_) => {
+                    return false;
+                }
+                Msg::Yes(_) => {
+                    return false;
+                }
+                Msg::No(other_no) => {
+                    return no == other_no;
+                }
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -45,9 +108,10 @@ impl Receiver for Server {
             Msg::Request(id) => {
                 if self.highest_id_seen < id {
                     self.highest_id_seen = id;
-                    return vec![(Msg::Yes(id), from)];
+                    vec![(Msg::Yes(id), from)]
+                } else {
+                    vec![(Msg::No(id), from)]
                 }
-                return vec![(Msg::No(id), from)];
             }
             Msg::Yes(_) => {
                 panic!();
@@ -77,52 +141,96 @@ impl Client {
 
 impl Receiver for Client {
     fn receive(&mut self, m: Msg, _addr: Addr) -> Vec<(Msg, Addr)> {
-        let to_all_servers = |servers: &Vec<Addr>, msg: Msg| -> Vec<(Msg, Addr)> {
+        fn to_all_servers(servers: &Vec<Addr>, msg: Msg) -> Vec<(Msg, Addr)> {
             servers
                 .iter()
                 .map(|server| (msg.clone(), server.clone()))
                 .collect()
         };
 
-        let get_responses_with_default = |id: Id| -> (usize, usize) {
-            match self.responses.get(&id) {
-                Some((y, n)) => (y.clone(), n.clone()),
-                None => (0, 0),
-            }
-        };
+        let mut get_responses_with_default =
+            |id: Id| -> (usize, usize) { *self.responses.get_mut(&id).unwrap_or(&mut (0, 0)) };
 
         match m {
             Msg::StartRequest => {
-                self.highest_id_seen = self.highest_id_seen + 1;
-                return to_all_servers(&self.servers, Msg::Request(self.highest_id_seen));
+                self.highest_id_seen += 1;
+                to_all_servers(&self.servers, Msg::Request(self.highest_id_seen))
             }
             Msg::Yes(id) => {
                 let (yes, no) = get_responses_with_default(id);
 
-                self.responses.insert(id, (yes + 1, no));
+                let new_yes = yes + 1;
+                self.responses.insert(id, (new_yes, no));
 
                 // '==' not '>=' to prevent double adding.
-                if yes == self.servers.len() / 2 {
-                    self.claimed_ids.push(id.clone());
+                if new_yes == (self.servers.len() / 2) + 1 {
+                    self.claimed_ids.push(id);
                 }
 
-                return vec![];
+                vec![]
             }
             Msg::No(id) => {
                 let (yes, no) = get_responses_with_default(id);
 
-                self.responses.insert(id, (yes, no + 1));
+                let new_no = no + 1;
+                self.responses.insert(id, (yes, new_no));
 
                 // '==' not '>=' to prevent double retries.
-                if no == self.servers.len() / 2 {
-                    let next_id = self.highest_id_seen + 1;
-                    self.highest_id_seen = next_id;
-                    return to_all_servers(&self.servers, Msg::Request(next_id));
+                if new_no == self.servers.len() / 2 {
+                    self.highest_id_seen += 1;
+                    return to_all_servers(&self.servers, Msg::Request(self.highest_id_seen));
                 }
 
-                return vec![];
+                vec![]
             }
             Msg::Request(_) => panic!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_receive_one_out_of_two_yes() {
+        let mut c = Client {
+            addr: "some".to_string(),
+            claimed_ids: vec![],
+            servers: vec!["server-1".to_string(), "server-2".to_string()],
+            highest_id_seen: 1,
+            responses: HashMap::new(),
+        };
+
+        assert_eq!(0, c.receive(Msg::Yes(1), "server-1".to_string()).len());
+
+        // Not claimed an id yet.
+        assert_eq!(0, c.claimed_ids.len());
+
+        assert_eq!(0, c.receive(Msg::Yes(1), "server-2".to_string()).len());
+
+        // Now claimed one id.
+        assert_eq!(1, c.claimed_ids.len());
+    }
+
+    #[test]
+    fn client_receive_no_msg_and_retry() {
+        let mut c = Client {
+            addr: "some".to_string(),
+            claimed_ids: vec![],
+            servers: vec!["server-1".to_string(), "server-2".to_string()],
+            highest_id_seen: 1,
+            responses: HashMap::new(),
+        };
+
+        let responses = c.receive(Msg::No(1), "server-2".to_string());
+
+        assert_eq!(
+            responses,
+            vec![
+                (Msg::Request(2), "server-1".to_string()),
+                (Msg::Request(2), "server-2".to_string())
+            ]
+        );
     }
 }
