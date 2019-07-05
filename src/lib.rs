@@ -21,58 +21,58 @@ impl PartialEq for Msg {
         match self {
             Msg::StartRequest => match other {
                 Msg::StartRequest => {
-                    return true;
+                    true
                 }
                 Msg::Request(_) => {
-                    return false;
+                    false
                 }
                 Msg::Yes(_) => {
-                    return false;
+                    false
                 }
                 Msg::No(_) => {
-                    return false;
+                    false
                 }
             },
             Msg::Request(id) => match other {
                 Msg::StartRequest => {
-                    return false;
+                    false
                 }
                 Msg::Request(other_id) => {
-                    return id == other_id;
+                    id == other_id
                 }
                 Msg::Yes(_) => {
-                    return false;
+                    false
                 }
                 Msg::No(_) => {
-                    return false;
+                    false
                 }
             },
             Msg::Yes(yes) => match other {
                 Msg::StartRequest => {
-                    return false;
+                    false
                 }
                 Msg::Request(_) => {
-                    return false;
+                    false
                 }
                 Msg::Yes(other_yes) => {
-                    return yes == other_yes;
+                    yes == other_yes
                 }
                 Msg::No(_) => {
-                    return false;
+                    false
                 }
             },
             Msg::No(no) => match other {
                 Msg::StartRequest => {
-                    return false;
+                    false
                 }
                 Msg::Request(_) => {
-                    return false;
+                    false
                 }
                 Msg::Yes(_) => {
-                    return false;
+                    false
                 }
                 Msg::No(other_no) => {
-                    return no == other_no;
+                    no == other_no
                 }
             },
         }
@@ -141,7 +141,7 @@ impl Client {
 
 impl Receiver for Client {
     fn receive(&mut self, m: Msg, _addr: Addr) -> Vec<(Msg, Addr)> {
-        fn to_all_servers(servers: &Vec<Addr>, msg: Msg) -> Vec<(Msg, Addr)> {
+        fn to_all_servers(servers: &[Addr], msg: Msg) -> Vec<(Msg, Addr)> {
             servers
                 .iter()
                 .map(|server| (msg.clone(), server.clone()))
