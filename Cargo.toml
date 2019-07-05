@@ -1,0 +1,13 @@
+[package]
+name = "id_generator"
+version = "0.1.0"
+authors = ["Max Leonard Inden <IndenML@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+queues = "1.0.0"
+rand  = "*"
+
+[dev-dependencies]
+quickcheck = "0.8"
+quickcheck_macros = "0.8"
