@@ -167,6 +167,7 @@ impl Receiver for Client {
                     self.claimed_ids.push(id);
                 }
 
+
                 vec![]
             }
             Msg::No(id) => {
@@ -175,8 +176,12 @@ impl Receiver for Client {
                 let new_no = no + 1;
                 self.responses.insert(id, (yes, new_no));
 
-                // '==' not '>=' to prevent double retries.
-                if new_no == self.servers.len() / 2 {
+                // When #servers == 1, retry at #no == 1
+                // When #servers == 2, retry at #no == 1
+                // When #servers == 3, retry at #no == 2
+                // When #servers == 4, retry at #no == 2
+                // ...
+                if new_no == self.servers.len() - self.servers.len() / 2 {
                     self.highest_id_seen += 1;
                     return to_all_servers(&self.servers, Msg::Request(self.highest_id_seen));
                 }
@@ -232,5 +237,52 @@ mod tests {
                 (Msg::Request(2), "server-2".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn client_with_three_servers() {
+        let mut c = Client {
+            addr: "some".to_string(),
+            claimed_ids: vec![],
+            servers: vec![
+                "server-1".to_string(),
+                "server-2".to_string(),
+                "server-3".to_string(),
+            ],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
+        };
+
+        assert_eq!(
+            c.receive(Msg::StartRequest, "simulator".to_string()),
+            vec![
+                (Msg::Request(1), "server-1".to_string()),
+                (Msg::Request(1), "server-2".to_string()),
+                (Msg::Request(1), "server-3".to_string()),
+            ]
+        );
+
+        assert_eq!(
+            c.receive(Msg::StartRequest, "simulator".to_string()),
+            vec![
+                (Msg::Request(2), "server-1".to_string()),
+                (Msg::Request(2), "server-2".to_string()),
+                (Msg::Request(2), "server-3".to_string()),
+            ]
+        );
+
+        assert_eq!(
+            c.receive(Msg::StartRequest, "simulator".to_string()),
+            vec![
+                (Msg::Request(3), "server-1".to_string()),
+                (Msg::Request(3), "server-2".to_string()),
+                (Msg::Request(3), "server-3".to_string()),
+            ]
+        );
+
+        assert_eq!(c.receive(Msg::Yes(1), "simulator".to_string()), vec![]);
+
+        // Expect client not to have claimed any ids so far.
+        assert_eq!(c.claimed_ids, vec![]);
     }
 }

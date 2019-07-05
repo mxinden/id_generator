@@ -1,6 +1,3 @@
-extern crate id_generator;
-extern crate queues;
-
 use id_generator::{Addr, Client, Envelope, Msg, Receiver, Server, Timestamp};
 use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
@@ -87,13 +84,9 @@ impl Simulator {
     }
 
     pub fn run(&mut self) -> Result<(), String> {
-        loop {
+        while self.in_flight.len() > 0 {
             if (self.goal_per_client * self.servers.len() * self.clients.len() * 100) < self.time {
                 return Err("too many iterations".to_string());
-            }
-
-            if self.in_flight.len() == 0 {
-                break;
             }
 
             self.sort_in_flight();
@@ -112,24 +105,15 @@ impl Simulator {
     }
 
     fn process_item(&mut self, e: Envelope) {
-        println!("{:?}", e);
         let (from, replies) = match e.msg {
-            Msg::StartRequest => match self.clients.get_mut(&e.to) {
-                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
-                None => panic!(),
-            },
-            Msg::Request(_) => match self.servers.get_mut(&e.to) {
-                Some(server) => (server.get_addr().clone(), server.receive(e.msg, e.from)),
-                None => panic!(),
-            },
-            Msg::Yes(_) => match self.clients.get_mut(&e.to) {
-                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
-                None => panic!(),
-            },
-            Msg::No(_) => match self.clients.get_mut(&e.to) {
-                Some(client) => (client.get_addr().clone(), client.receive(e.msg, e.from)),
-                None => panic!(),
-            },
+            Msg::StartRequest | Msg::Yes(_) | Msg::No(_) => {
+                let c = self.clients.get_mut(&e.to).unwrap();
+                (c.get_addr().clone(), c.receive(e.msg, e.from))
+            }
+            Msg::Request(_) => {
+                let s = self.servers.get_mut(&e.to).unwrap();
+                (s.get_addr().clone(), s.receive(e.msg, e.from))
+            }
         };
 
         // We did work, thus moving the clock forward.
@@ -145,42 +129,75 @@ impl Simulator {
         }
     }
 
-    pub fn validate_run(&self) -> Result<bool, String> {
+    pub fn validate_run(&self) -> Result<(), String> {
         let clients: Vec<&Client> = self.clients.iter().map(|(_, v)| v).collect();
 
-        // Make sure no two clients claimed the same Id.
+        Simulator::no_duplicate_ids(&clients)?;
+        Simulator::clients_reached_their_goal(&clients, self.goal_per_client)?;
+
+        return Ok(());
+    }
+
+    fn clients_reached_their_goal(
+        clients: &Vec<&Client>,
+        goal_per_client: usize,
+    ) -> Result<(), String> {
+        clients
+            .iter()
+            .map(|c| {
+                if c.claimed_ids.len() != goal_per_client {
+                    Err(format!(
+                        "expected {} to claim {} ids but got {}",
+                        c.addr,
+                        goal_per_client,
+                        c.claimed_ids.len(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+            .collect::<Result<Vec<()>, String>>()?;
+
+        Ok(())
+    }
+
+    fn no_duplicate_ids(clients: &Vec<&Client>) -> Result<(), String> {
         for i in 0..clients.len() {
             let a = clients[i];
 
-            for j in (i + 1)..self.clients.len() {
+            for j in (i + 1)..clients.len() {
                 let b = clients[j];
 
-                for a_id in a.claimed_ids.iter() {
-                    for b_id in b.claimed_ids.iter() {
-                        if a_id == b_id {
-                            return Err(format!(
-                                "both client {} and {} claimed id {}",
-                                a.addr, b.addr, a_id
-                            ));
-                        }
-                    }
-                }
+                let mut test_map = HashMap::new();
+
+                a.claimed_ids
+                    .iter()
+                    .map(|id| test_map.insert(id, id))
+                    // Make sure none are inserted twice.
+                    .fold(Ok(()), |acc, v| {
+                        acc.and_then(|()| match v {
+                            Some(id) => {
+                                Err(format!("expected {} not to claim id {} twice", a.addr, id))
+                            }
+                            None => Ok(()),
+                        })
+                    })?;
+
+                b.claimed_ids
+                    .iter()
+                    .map(|id| test_map.insert(id, id))
+                    .fold(Ok(()), |acc, v| {
+                        acc.and_then(|()| match v {
+                            Some(id) => {
+                                Err(format!("both {} and {} claimed id {}", a.addr, b.addr, id))
+                            }
+                            None => Ok(()),
+                        })
+                    })?;
             }
         }
 
-        // Make sure all clients claimed the amount of Ids they planned to.
-        for c in clients {
-            if c.claimed_ids.len() != self.goal_per_client {
-                return Err(format!(
-                    "expected {} to claim {} ids but got {}",
-                    c.addr,
-                    self.goal_per_client,
-                    c.claimed_ids.len(),
-                ));
-            }
-        }
-
-        return Ok(true);
+        Ok(())
     }
 }
 
@@ -197,6 +214,58 @@ mod tests {
             Err(e) => panic!(e),
         };
 
-        assert_eq!(sim.time, 36);
+        assert_eq!(sim.time, 41);
+    }
+
+    #[test]
+    fn simulator_no_duplicate_ids() {
+        let mut c_a = Client {
+            addr: "client-a".to_string(),
+            claimed_ids: vec![],
+            servers: vec![],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
+        };
+        c_a.claimed_ids = vec![1, 2, 3, 4, 20];
+
+        let mut c_b = Client {
+            addr: "client-b".to_string(),
+            claimed_ids: vec![],
+            servers: vec![],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
+        };
+        c_b.claimed_ids = vec![5, 6, 7, 8, 20];
+
+        assert_eq!(
+            Simulator::no_duplicate_ids(&vec![&c_a, &c_b]),
+            Err("both client-a and client-b claimed id 20".to_string()),
+        );
+    }
+
+    #[test]
+    fn simulator_clients_reach_their_goal() {
+        let mut c_a = Client {
+            addr: "client-a".to_string(),
+            claimed_ids: vec![],
+            servers: vec![],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
+        };
+        c_a.claimed_ids = vec![1, 2, 3, 4];
+
+        let mut c_b = Client {
+            addr: "client-b".to_string(),
+            claimed_ids: vec![],
+            servers: vec![],
+            highest_id_seen: 0,
+            responses: HashMap::new(),
+        };
+        c_b.claimed_ids = vec![5, 6, 7];
+
+        assert_eq!(
+            Simulator::clients_reached_their_goal(&vec![&c_a, &c_b], 4),
+            Err("expected client-b to claim 4 ids but got 3".to_string()),
+        );
     }
 }
